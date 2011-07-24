@@ -138,19 +138,21 @@ sub import {
 
     on_scope_end {
         my $meta = Class::MOP::Class->initialize($cleanee);
+
         my %methods = map { ($_ => 1) } $meta->get_method_list;
         $methods{meta} = 1 if $meta->isa('Moose::Meta::Role') && Moose->VERSION < 0.90;
-        my %extra = ();
 
         for my $method (keys %methods) {
-            next if exists $extra{$_};
-            next unless first { $runtest->($_, $method) } @also;
-            next if     first { $runtest->($_, $method) } @except;
-            $extra{ $method } = 1;
+           delete $methods{$method} if first { $runtest->($_, $method) } @also;
         }
 
         my @symbols = keys %{ $meta->get_all_package_symbols('CODE') };
-        namespace::clean->clean_subroutines($cleanee, keys %extra, grep { !$methods{$_} } @symbols);
+        for my $symbol (@symbols) {
+            next if exists $methods{$symbol};
+            $methods{ $symbol } = 1 if first { $runtest->($_, $symbol) } @except;
+        }
+
+        namespace::clean->clean_subroutines($cleanee, grep { !$methods{$_} } @symbols);
     };
 }
 
