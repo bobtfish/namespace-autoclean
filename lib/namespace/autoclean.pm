@@ -60,21 +60,34 @@ peers), you can use the C<-cleanee> switch to specify what package to clean:
 
 =head2 -also => SUB
 
+=head2 -except => [ ITEM | REGEX | SUB, .. ]
+
+=head2 -except => ITEM
+
+=head2 -except => REGEX
+
+=head2 -except => SUB
+
 Sometimes you don't want to clean imports only, but also helper functions
 you're using in your methods. The C<-also> switch can be used to declare a list
 of functions that should be removed additional to any imports:
 
     use namespace::autoclean -also => ['some_function', 'another_function'];
 
-If only one function needs to be additionally cleaned the C<-also> switch also
-accepts a plain string:
+Similarly, sometimes you don't want to clean all the exporters.  The C<-except>
+switch can be used to declare a list of imports that should not be removed:
+
+    use namespace::autoclean -except => ['import'];
+
+If only one function needs to be additionally cleaned the C<-also> and C<-except>
+switches also accept a plain string:
 
     use namespace::autoclean -also => 'some_function';
 
 In some situations, you may wish for a more I<powerful> cleaning solution.
 
-The C<-also> switch can take a Regex or a CodeRef to match against local
-function names to clean.
+The C<-also> and C<-except> switches can take a Regex or a CodeRef to match
+against local function names to clean.
 
     use namespace::autoclean -also => qr/^_/
 
@@ -117,6 +130,11 @@ sub import {
         ? (ref $args{-also} eq 'ARRAY' ? @{ $args{-also} } : $args{-also})
         : ()
     );
+    my @except = map { $subcast->($_) } (
+        exists $args{-except}
+        ? (ref $args{-except} eq 'ARRAY' ? @{ $args{-except} } : $args{-except})
+        : ()
+    );
 
     on_scope_end {
         my $meta = Class::MOP::Class->initialize($cleanee);
@@ -127,6 +145,7 @@ sub import {
         for my $method (keys %methods) {
             next if exists $extra{$_};
             next unless first { $runtest->($_, $method) } @also;
+            next if     first { $runtest->($_, $method) } @except;
             $extra{ $method } = 1;
         }
 
