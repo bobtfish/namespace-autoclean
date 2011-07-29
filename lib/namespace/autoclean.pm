@@ -4,7 +4,6 @@ use warnings;
 package namespace::autoclean;
 # ABSTRACT: Keep imports out of your namespace
 
-use Class::MOP 0.80;
 use B::Hooks::EndOfScope;
 use List::Util qw( first );
 use namespace::clean 0.20;
@@ -34,7 +33,8 @@ class or instances.
 This module is very similar to L<namespace::clean|namespace::clean>, except it
 will clean all imported functions, no matter if you imported them before or
 after you C<use>d the pragma. It will also not touch anything that looks like a
-method, according to C<Class::MOP::Class::get_method_list>.
+method, according to either C<Class::MOP::Class::get_method_list> or, if Mouse
+is already loaded, C<Mouse::Meta::Class::get_method_list>.
 
 If you're writing an exporter and you want to clean up after yourself (and your
 peers), you can use the C<-cleanee> switch to specify what package to clean:
@@ -103,12 +103,25 @@ L<namespace::clean>
 
 L<Class::MOP>
 
+L<Mouse>
+
+L<Sub::Identify>
+
+L<Package::Stash>
+
 L<B::Hooks::EndOfScope>
 
 =cut
 
+my $MCC;        # metaclass class
+my $GETMETHODS; # function to get real methods of class
+my $GETSYMS;    # function to get code symbols in package
+
 sub import {
     my ($class, %args) = @_;
+
+    my @bad = grep { !/^-(except|also|cleanee)\z/ } keys %args;
+    die "Invalid autoclean key(s): @bad" if @bad;
 
     my $subcast = sub {
         my $i = shift;
@@ -136,17 +149,40 @@ sub import {
         : ()
     );
 
-    on_scope_end {
-        my $meta = Class::MOP::Class->initialize($cleanee);
+    unless ($MCC) {
+        if (exists $INC{'Mouse.pm'}) {
+            require Package::Stash;
+            require Sub::Identify;
+            $MCC = 'Mouse::Meta::Class';
+            $GETSYMS    = sub { Package::Stash->new($_[0]->name)->list_all_symbols('CODE') };
+            $GETMETHODS = sub {
+                my $pkg = $_[0]->name;
+                grep { ; no strict 'refs';
+                       my $s = Sub::Identify::stash_name(\&{"${pkg}::$_"});
+                       $s && ($s eq $pkg || $s eq 'constant' || $s eq '__ANON__') }
+                  $_[0]->get_method_list
+            };
+        }
+        else {
+            require Class::MOP;
+            Class::MOP->VERSION(0.80);
+            $MCC = 'Class::MOP::Class';
+            $GETSYMS    = sub { $_[0]->list_all_package_symbols('CODE') };
+            $GETMETHODS = 'get_method_list';
+        }
+    };
 
-        my %methods = map { ($_ => 1) } $meta->get_method_list;
+    on_scope_end {
+        my $meta = $MCC->initialize($cleanee);
+
+        my %methods = map { ($_ => 1) } $meta->$GETMETHODS;
         $methods{meta} = 1 if $meta->isa('Moose::Meta::Role') && Moose->VERSION < 0.90;
 
         for my $method (keys %methods) {
            delete $methods{$method} if first { $runtest->($_, $method) } @also;
         }
 
-        my @symbols = keys %{ $meta->get_all_package_symbols('CODE') };
+        my @symbols = $meta->$GETSYMS;
         for my $symbol (@symbols) {
             next if exists $methods{$symbol};
             $methods{ $symbol } = 1 if first { $runtest->($_, $symbol) } @except;
