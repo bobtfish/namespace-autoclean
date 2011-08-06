@@ -154,10 +154,7 @@ sub import {
             require Package::Stash;
             require Sub::Identify;
             $MCC = 'Mouse::Meta::Class';
-            $GETSYMS    = sub {
-                grep { !/^\(/ }
-                  Package::Stash->new($_[0]->name)->list_all_symbols('CODE')
-            };
+            $GETSYMS    = sub { Package::Stash->new($_[0]->name)->list_all_symbols('CODE') };
             $GETMETHODS = sub {
                 my $pkg = $_[0]->name;
                 grep { ; no strict 'refs';
@@ -188,7 +185,7 @@ sub import {
            delete $methods{$method} if first { $runtest->($_, $method) } @also;
         }
 
-        my @symbols = $meta->$GETSYMS;
+        my @symbols = grep { !/^\(/ } $meta->$GETSYMS;
         for my $symbol (@symbols) {
             next if exists $methods{$symbol};
             $methods{ $symbol } = 1 if first { $runtest->($_, $symbol) } @except;

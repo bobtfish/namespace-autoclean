@@ -1,3 +1,6 @@
+0.1204  Fri, 03 Aug 2011 00:01:00 +0000
+  * do not break overload for Moose 
+
 0.1203  Fri, 03 Aug 2011 00:00:00 +0000
   * protect against false double scope scope end
   * do not break overload for Mouse
