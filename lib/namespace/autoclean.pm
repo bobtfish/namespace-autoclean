@@ -154,7 +154,10 @@ sub import {
             require Package::Stash;
             require Sub::Identify;
             $MCC = 'Mouse::Meta::Class';
-            $GETSYMS    = sub { Package::Stash->new($_[0]->name)->list_all_symbols('CODE') };
+            $GETSYMS    = sub {
+                grep { !/^\(/ }
+                  Package::Stash->new($_[0]->name)->list_all_symbols('CODE')
+            };
             $GETMETHODS = sub {
                 my $pkg = $_[0]->name;
                 grep { ; no strict 'refs';
@@ -172,7 +175,10 @@ sub import {
         }
     };
 
+    my $already;
     on_scope_end {
+        return if $already++;
+
         my $meta = $MCC->initialize($cleanee);
 
         my %methods = map { ($_ => 1) } $meta->$GETMETHODS;
